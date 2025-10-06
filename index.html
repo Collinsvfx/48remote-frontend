@@ -6,21 +6,56 @@
     <title>Remote Design Jobs</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#64748b'
+                    }
+                }
+            }
+        }
+    </script>
     <style>
+        /* Custom CSS for transitions and active state, enhancing Tailwind */
         .job-card {
             transition: all 0.3s ease;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border-radius: 0.5rem; /* Ensure cards have rounded corners */
         }
         .job-card:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
         }
-        .source-tag {
-            transition: all 0.2s ease;
+        
+        /* New CSS for the dropdown component */
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 15px;
+            cursor: pointer;
+            transition: background-color 0.1s;
         }
-        .source-tag.active {
-            background-color: #dbeafe;
-            color: #1d4ed8;
+
+        .dropdown-item:hover {
+            background-color: #f3f4f6; /* gray-100 */
+        }
+
+        .dropdown-item input[type="checkbox"] {
+            margin-right: 12px;
+            accent-color: #3b82f6; /* blue-500 */
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        /* Ensure mobile responsiveness for controls */
+        @media (max-width: 767px) {
+            .jobs-container {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -34,13 +69,23 @@
             </p>
         </header>
 
-        <!-- Controls -->
+        <!-- Controls (Updated for Dropdown and same-line button) -->
         <div class="bg-white rounded-xl shadow-md p-6 mb-8">
-            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div class="flex flex-wrap gap-2" id="sources-container">
-                    <!-- Source tags will be populated here -->
+            <div class="flex flex-col md:flex-row md:items-center gap-4"> 
+                <!-- Dropdown Container -->
+                <div class="dropdown-container relative flex-grow min-w-48" id="dropdown-container">
+                    <button id="source-dropdown-button" class="w-full text-left px-4 py-3 bg-white border border-gray-300 rounded-lg hover:border-blue-500 transition-colors flex items-center justify-between text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <span id="selected-sources-text">Select Job Sources</span>
+                        <i class="fas fa-chevron-down text-sm transition-transform duration-200"></i>
+                    </button>
+                    <!-- Dropdown Content -->
+                    <div id="source-dropdown-content" class="absolute w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-xl z-10 max-h-60 overflow-y-auto hidden">
+                        <!-- Checkboxes will be populated here by JS -->
+                    </div>
                 </div>
-                <button id="load-btn" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors flex items-center gap-2">
+
+                <!-- Load Jobs Button -->
+                <button id="load-btn" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2 flex-shrink-0 w-full md:w-auto">
                     <i class="fas fa-sync-alt"></i>
                     <span>Load Jobs</span>
                 </button>
@@ -54,13 +99,13 @@
         </div>
 
         <!-- Error State -->
-        <div id="error" class="hidden bg-red-50 border-l-4 border-red-500 p-4 mb-8">
+        <div id="error" class="hidden bg-red-50 border-l-4 border-red-500 p-4 mb-8 rounded-lg">
             <div class="flex">
                 <div class="flex-shrink-0">
-                    <i class="fas fa-exclamation-triangle text-red-500"></i>
+                    <i class="fas fa-exclamation-triangle text-red-500 mt-1"></i>
                 </div>
                 <div class="ml-3">
-                    <p class="text-red-700" id="error-message">Error loading jobs</p>
+                    <p class="text-red-700 font-medium" id="error-message">Error loading jobs</p>
                 </div>
             </div>
         </div>
@@ -79,7 +124,7 @@
     </div>
 
     <script>
-        // Configuration - UPDATE THIS WITH YOUR GITHUB RAW URL
+        // Configuration - URL pointing to a JSON file containing job data
         const JOBS_JSON_URL = 'https://raw.githubusercontent.com/Collinsvfx/48remote/refs/heads/main/jobs.json';
         const SOURCES = [
             'Dribbble', 'Remote Rocketship', 'BuiltIn', 'Up2Staff', 
@@ -94,53 +139,105 @@
         const errorMessageEl = document.getElementById('error-message');
         const jobsContainer = document.getElementById('jobs-container');
         const emptyEl = document.getElementById('empty');
-        const sourcesContainer = document.getElementById('sources-container');
+        // New Dropdown Elements
+        const dropdownButton = document.getElementById('source-dropdown-button');
+        const dropdownContent = document.getElementById('source-dropdown-content');
+        const selectedSourcesText = document.getElementById('selected-sources-text');
+        const dropdownContainer = document.getElementById('dropdown-container'); 
 
-        // State
-        let selectedSources = [];
+        // State: Initialize with ALL sources selected
+        let selectedSources = [...SOURCES];
         let allJobs = [];
 
-        // Initialize source filters
-        function initSources() {
-            sourcesContainer.innerHTML = '';
+        /**
+         * Initializes the multi-select dropdown with source checkboxes.
+         */
+        function initDropdown() {
+            dropdownContent.innerHTML = '';
+            
             SOURCES.forEach(source => {
-                const tag = document.createElement('button');
-                tag.className = 'source-tag px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full text-sm font-medium transition-colors';
-                tag.textContent = source;
-                tag.dataset.source = source;
-                tag.addEventListener('click', () => toggleSource(source));
-                sourcesContainer.appendChild(tag);
+                const item = document.createElement('label');
+                item.className = 'dropdown-item';
+                // Initially checked because selectedSources is initialized with all sources
+                item.innerHTML = `
+                    <input type="checkbox" data-source="${source}" value="${source}" checked>
+                    <span>${source}</span>
+                `;
+                
+                // Use event listener on the label/item wrapper to handle click anywhere on the item
+                item.addEventListener('change', handleCheckboxChange); 
+                
+                dropdownContent.appendChild(item);
             });
-        }
+            
+            updateDropdownButtonText();
 
-        // Toggle source selection
-        function toggleSource(source) {
-            const index = selectedSources.indexOf(source);
-            if (index > -1) {
-                selectedSources.splice(index, 1);
-            } else {
-                selectedSources.push(source);
-            }
-            updateSourceTags();
-            filterJobs();
-        }
-
-        // Update source tag styles
-        function updateSourceTags() {
-            document.querySelectorAll('.source-tag').forEach(tag => {
-                const source = tag.dataset.source;
-                if (selectedSources.includes(source)) {
-                    tag.classList.add('active');
+            // Event listener for toggling dropdown visibility
+            dropdownButton.addEventListener('click', (e) => {
+                e.stopPropagation(); 
+                dropdownContent.classList.toggle('hidden');
+                
+                // Rotate arrow icon
+                const arrow = dropdownButton.querySelector('.fa-chevron-down');
+                if (!dropdownContent.classList.contains('hidden')) {
+                     arrow.classList.add('rotate-180');
                 } else {
-                    tag.classList.remove('active');
+                     arrow.classList.remove('rotate-180');
+                }
+            });
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!dropdownContainer.contains(e.target)) {
+                    dropdownContent.classList.add('hidden');
+                    dropdownButton.querySelector('.fa-chevron-down').classList.remove('rotate-180');
                 }
             });
         }
 
-        // Filter and display jobs
+        /**
+         * Handles the change event for a checkbox in the dropdown.
+         */
+        function handleCheckboxChange(event) {
+            const checkbox = event.target.closest('input[type="checkbox"]');
+            if (!checkbox) return; 
+
+            const source = checkbox.value;
+            
+            if (checkbox.checked) {
+                if (!selectedSources.includes(source)) {
+                    selectedSources.push(source);
+                }
+            } else {
+                selectedSources = selectedSources.filter(s => s !== source);
+            }
+            
+            updateDropdownButtonText();
+            filterJobs();
+        }
+
+        /**
+         * Updates the text displayed on the dropdown button based on current selections.
+         */
+        function updateDropdownButtonText() {
+            if (selectedSources.length === SOURCES.length) {
+                selectedSourcesText.textContent = `All ${SOURCES.length} Sources Selected`;
+            } else if (selectedSources.length === 0) {
+                selectedSourcesText.textContent = "No Sources Selected";
+            } else if (selectedSources.length === 1) {
+                selectedSourcesText.textContent = selectedSources[0];
+            } else {
+                selectedSourcesText.textContent = `${selectedSources.length} Sources Selected`;
+            }
+        }
+
+        /**
+         * Filters the main job list based on selected sources and displays the results.
+         */
         function filterJobs() {
             let filteredJobs = allJobs;
             
+            // Only filter if at least one source is selected
             if (selectedSources.length > 0) {
                 filteredJobs = allJobs.filter(job => 
                     selectedSources.includes(job.source)
@@ -150,7 +247,10 @@
             displayJobs(filteredJobs);
         }
 
-        // Display jobs in container
+        /**
+         * Creates and inserts job cards into the container.
+         * @param {Array<Object>} jobs - The array of job objects to display.
+         */
         function displayJobs(jobs) {
             jobsContainer.innerHTML = '';
             
@@ -164,12 +264,14 @@
             jobs.forEach(job => {
                 const jobCard = document.createElement('div');
                 jobCard.className = 'job-card bg-white rounded-lg p-6 border border-gray-200';
+                
+                // Card structure matching the previous, desired UI style as closely as possible
                 jobCard.innerHTML = `
                     <div class="flex justify-between items-start mb-3">
                         <span class="inline-block px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
                             ${job.source}
                         </span>
-                        <a href="${job.url}" target="_blank" class="text-gray-400 hover:text-blue-600">
+                        <a href="${job.url}" target="_blank" class="text-gray-400 hover:text-primary">
                             <i class="fas fa-external-link-alt"></i>
                         </a>
                     </div>
@@ -188,11 +290,15 @@
             });
         }
 
-        // Fetch jobs from GitHub
+        /**
+         * Fetches jobs from the configured GitHub JSON URL.
+         */
         async function loadJobs() {
             try {
                 showLoading();
-                // Add cache-busting parameter
+                errorEl.classList.add('hidden');
+                
+                // Add cache-busting parameter to bypass browser/proxy cache
                 const url = `${JOBS_JSON_URL}?_=${Date.now()}`;
                 const response = await fetch(url);
                 
@@ -201,19 +307,25 @@
                 }
                 
                 const jobs = await response.json();
-                allJobs = jobs;
+                
+                // Update state
+                allJobs = jobs; 
+                
+                // Ensure UI reflects current filter state after loading
+                updateDropdownButtonText();
                 filterJobs();
             } catch (error) {
                 console.error('Fetch error:', error);
-                showError('Failed to load jobs. Make sure your GitHub repo is public and contains jobs.json!');
+                showError('Failed to load jobs. Check the console for details.');
             } finally {
                 hideLoading();
             }
         }
 
-        // UI Helpers
+        // UI Helpers 
         function showLoading() {
             loadingEl.classList.remove('hidden');
+            jobsContainer.innerHTML = '';
             loadBtn.disabled = true;
         }
         
@@ -225,17 +337,18 @@
         function showError(message) {
             errorMessageEl.textContent = message;
             errorEl.classList.remove('hidden');
-            setTimeout(() => errorEl.classList.add('hidden'), 5000);
+            // Hide error after 5 seconds
+            setTimeout(() => errorEl.classList.add('hidden'), 5000); 
         }
 
         // Event Listeners
         loadBtn.addEventListener('click', loadJobs);
 
-        // Initialize
-        initSources();
-        loadJobs(); // Load jobs on page load
+        // Initialize on load
+        window.onload = function() {
+            initDropdown();
+            loadJobs(); // Load jobs on page load
+        }
     </script>
 </body>
-
 </html>
-
