@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remote Design Jobs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .job-card {
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .job-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        .source-tag {
+            transition: all 0.2s ease;
+        }
+        .source-tag.active {
+            background-color: #dbeafe;
+            color: #1d4ed8;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Header -->
+        <header class="mb-12 text-center">
+            <h1 class="text-4xl font-bold text-gray-900 mb-2">Remote Design Jobs</h1>
+            <p class="text-gray-600 max-w-2xl mx-auto">
+                Discover the latest UI/UX and Product Design opportunities from 10+ job boards
+            </p>
+        </header>
+
+        <!-- Controls -->
+        <div class="bg-white rounded-xl shadow-md p-6 mb-8">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div class="flex flex-wrap gap-2" id="sources-container">
+                    <!-- Source tags will be populated here -->
+                </div>
+                <button id="load-btn" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors flex items-center gap-2">
+                    <i class="fas fa-sync-alt"></i>
+                    <span>Load Jobs</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading" class="hidden text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600 mb-4"></div>
+            <p class="text-gray-600">Loading jobs from GitHub...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error" class="hidden bg-red-50 border-l-4 border-red-500 p-4 mb-8">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i class="fas fa-exclamation-triangle text-red-500"></i>
+                </div>
+                <div class="ml-3">
+                    <p class="text-red-700" id="error-message">Error loading jobs</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Jobs Container -->
+        <div id="jobs-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Job cards will be populated here -->
+        </div>
+
+        <!-- Empty State -->
+        <div id="empty" class="hidden text-center py-12">
+            <i class="fas fa-briefcase text-gray-400 text-5xl mb-4"></i>
+            <h3 class="text-xl font-medium text-gray-900 mb-2">No jobs found</h3>
+            <p class="text-gray-600">Try loading jobs or check back later</p>
+        </div>
+    </div>
+
+    <script>
+        // Configuration - UPDATE THIS WITH YOUR GITHUB RAW URL
+        const JOBS_JSON_URL = 'https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/jobs.json';
+        const SOURCES = [
+            'Dribbble', 'Remote Rocketship', 'BuiltIn', 'Up2Staff', 
+            'WeWorkRemotely', 'Just Remote', 'Remote4Africa', 
+            'Real Work From Anywhere', 'Product Jobs Anywhere'
+        ];
+
+        // DOM Elements
+        const loadBtn = document.getElementById('load-btn');
+        const loadingEl = document.getElementById('loading');
+        const errorEl = document.getElementById('error');
+        const errorMessageEl = document.getElementById('error-message');
+        const jobsContainer = document.getElementById('jobs-container');
+        const emptyEl = document.getElementById('empty');
+        const sourcesContainer = document.getElementById('sources-container');
+
+        // State
+        let selectedSources = [];
+        let allJobs = [];
+
+        // Initialize source filters
+        function initSources() {
+            sourcesContainer.innerHTML = '';
+            SOURCES.forEach(source => {
+                const tag = document.createElement('button');
+                tag.className = 'source-tag px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full text-sm font-medium transition-colors';
+                tag.textContent = source;
+                tag.dataset.source = source;
+                tag.addEventListener('click', () => toggleSource(source));
+                sourcesContainer.appendChild(tag);
+            });
+        }
+
+        // Toggle source selection
+        function toggleSource(source) {
+            const index = selectedSources.indexOf(source);
+            if (index > -1) {
+                selectedSources.splice(index, 1);
+            } else {
+                selectedSources.push(source);
+            }
+            updateSourceTags();
+            filterJobs();
+        }
+
+        // Update source tag styles
+        function updateSourceTags() {
+            document.querySelectorAll('.source-tag').forEach(tag => {
+                const source = tag.dataset.source;
+                if (selectedSources.includes(source)) {
+                    tag.classList.add('active');
+                } else {
+                    tag.classList.remove('active');
+                }
+            });
+        }
+
+        // Filter and display jobs
+        function filterJobs() {
+            let filteredJobs = allJobs;
+            
+            if (selectedSources.length > 0) {
+                filteredJobs = allJobs.filter(job => 
+                    selectedSources.includes(job.source)
+                );
+            }
+            
+            displayJobs(filteredJobs);
+        }
+
+        // Display jobs in container
+        function displayJobs(jobs) {
+            jobsContainer.innerHTML = '';
+            
+            if (jobs.length === 0) {
+                emptyEl.classList.remove('hidden');
+                return;
+            }
+            
+            emptyEl.classList.add('hidden');
+            
+            jobs.forEach(job => {
+                const jobCard = document.createElement('div');
+                jobCard.className = 'job-card bg-white rounded-lg p-6 border border-gray-200';
+                jobCard.innerHTML = `
+                    <div class="flex justify-between items-start mb-3">
+                        <span class="inline-block px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+                            ${job.source}
+                        </span>
+                        <a href="${job.url}" target="_blank" class="text-gray-400 hover:text-blue-600">
+                            <i class="fas fa-external-link-alt"></i>
+                        </a>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-900 mb-2">${job.title}</h3>
+                    <p class="text-gray-700 mb-3">${job.company}</p>
+                    <div class="flex items-center text-gray-600 text-sm mb-3">
+                        <i class="fas fa-map-marker-alt mr-2"></i>
+                        <span>${job.location}</span>
+                    </div>
+                    <div class="flex items-center text-gray-500 text-sm">
+                        <i class="far fa-clock mr-2"></i>
+                        <span>${job.posted_ago}</span>
+                    </div>
+                `;
+                jobsContainer.appendChild(jobCard);
+            });
+        }
+
+        // Fetch jobs from GitHub
+        async function loadJobs() {
+            try {
+                showLoading();
+                // Add cache-busting parameter
+                const url = `${JOBS_JSON_URL}?_=${Date.now()}`;
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const jobs = await response.json();
+                allJobs = jobs;
+                filterJobs();
+            } catch (error) {
+                console.error('Fetch error:', error);
+                showError('Failed to load jobs. Make sure your GitHub repo is public and contains jobs.json!');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // UI Helpers
+        function showLoading() {
+            loadingEl.classList.remove('hidden');
+            loadBtn.disabled = true;
+        }
+        
+        function hideLoading() {
+            loadingEl.classList.add('hidden');
+            loadBtn.disabled = false;
+        }
+        
+        function showError(message) {
+            errorMessageEl.textContent = message;
+            errorEl.classList.remove('hidden');
+            setTimeout(() => errorEl.classList.add('hidden'), 5000);
+        }
+
+        // Event Listeners
+        loadBtn.addEventListener('click', loadJobs);
+
+        // Initialize
+        initSources();
+        loadJobs(); // Load jobs on page load
+    </script>
+</body>
+</html>
